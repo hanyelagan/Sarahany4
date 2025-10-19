@@ -6376,4 +6376,424 @@ styleSheet.textContent = paginationStyles;
 document.head.appendChild(styleSheet);
 </script>
 <!-- END: Map GPS Export Patch -->
+  <script>
+// ======== إصلاح أزرار الصفحات في الاستمارات الرسمية ========
+
+// إصلاح دالة showFormPage لضمان عمل الأزرار بشكل صحيح
+RealEstateApp.showFormPage = function(formType, pageNumber) {
+    if (formType === 'form1') {
+        this.fillOfficialForm1(this.currentProperty, pageNumber);
+    } else if (formType === 'form2') {
+        this.fillOfficialForm2(this.currentProperty, pageNumber);
+    }
+};
+
+// إصلاح دالة createPaginationControls لضمان ربط الأحداث بشكل صحيح
+RealEstateApp.createPaginationControls = function(currentPage, totalPages, formType) {
+    const controls = document.createElement('div');
+    controls.className = 'pagination-controls';
+    controls.style.cssText = 'text-align: center; margin: 20px 0; display: flex; justify-content: center; align-items: center; gap: 10px;';
+
+    if (totalPages <= 1) return controls;
+
+    const prevButton = document.createElement('button');
+    prevButton.className = 'btn';
+    prevButton.innerHTML = '<i class="fas fa-chevron-right"></i> الصفحة السابقة';
+    prevButton.disabled = currentPage === 1;
+    
+    // إصلاح ربط الحدث لضمان عمل الزر
+    prevButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showFormPage(formType, currentPage - 1);
+    });
+
+    const nextButton = document.createElement('button');
+    nextButton.className = 'btn';
+    nextButton.innerHTML = 'الصفحة التالية <i class="fas fa-chevron-left"></i>';
+    nextButton.disabled = currentPage === totalPages;
+    
+    // إصلاح ربط الحدث لضمان عمل الزر
+    nextButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showFormPage(formType, currentPage + 1);
+    });
+
+    const pageInfo = document.createElement('span');
+    pageInfo.style.cssText = 'padding: 8px 15px; background: #f8f9fa; border-radius: 5px; font-weight: bold;';
+    pageInfo.textContent = `الصفحة ${currentPage} من ${totalPages}`;
+
+    controls.appendChild(prevButton);
+    controls.appendChild(pageInfo);
+    controls.appendChild(nextButton);
+
+    return controls;
+};
+
+// إصلاح دالة fillOfficialForm1 لضمان عمل التقسيم إلى صفحات
+RealEstateApp.fillOfficialForm1 = function(property, page = 1) {
+    if (!property) return;
+
+    const itemsPerPage = 10;
+    const allUnits = property.units || [];
+    const totalPages = Math.ceil(allUnits.length / itemsPerPage);
+    const currentPage = Math.max(1, Math.min(page, totalPages));
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const units = allUnits.slice(startIndex, endIndex);
+
+    // تحديث عنوان الاستمارة
+    document.getElementById('form1-header').innerHTML = `
+        <td colspan="18" class="merged-cell">
+        محافظة: ${property.governorate || '--'}
+        مأمورية: ${property.city || '--'}
+        قرية: ${property.district || '--'}
+        ${totalPages > 1 ? ` - الصفحة ${currentPage} من ${totalPages}` : ''}
+        </td>
+    `;
+
+    // تعبئة البيانات
+    const tbody = document.getElementById('form1-data');
+    tbody.innerHTML = '';
+
+    if (units.length > 0) {
+        units.forEach((unit, index) => {
+            const globalIndex = startIndex + index;
+            const tr = document.createElement('tr');
+            
+            // تعبئة البيانات المشتركة مرة واحدة فقط للوحدة الأولى في الصفحة
+            const commonData = index === 0 ? `
+                <td rowspan="${units.length}">${property.propertyNumber || '--'}</td>
+                <td rowspan="${units.length}">${property.street || '--'}</td>
+                <td rowspan="${units.length}">${property.streetWidth || '--'}</td>
+                <td rowspan="${units.length}">${property.owner || '--'}</td>
+                <td rowspan="${units.length}">${this.getBuildingMaterialName(property.buildingMaterial)}</td>
+                <td rowspan="${units.length}">${property.detailedDescription || '--'}</td>
+                <td rowspan="${units.length}">${property.constructionYear || '--'}</td>
+            ` : '';
+            
+            tr.innerHTML = commonData + `
+                <td>${this.getUseTypeName(unit.useType)}</td>
+                <td>${unit.floor || '--'}</td>
+                <td>${unit.number || globalIndex + 1}</td>
+                <td>${this.getUnitTypeName(unit.unitType)}</td>
+                <td>${unit.area || '--'} م²</td>
+                <td>${unit.occupant || '--'}</td>
+                <td>${unit.rentalValue ? this.formatCurrency(unit.rentalValue) : '--'}</td>
+                <td>${unit.tax ? this.formatCurrency(unit.tax) : '--'}</td>
+                <td>${property.district || '--'}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } else {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td colspan="18" style="text-align: center; padding: 20px; color: var(--gray);">
+            <i class="fas fa-inbox"></i>
+            <h3>لا توجد وحدات مسجلة لهذا العقار</h3>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    }
+
+    // إضافة عناصر التحكم بالصفحات
+    const existingPagination = document.getElementById('form1-pagination');
+    if (existingPagination) {
+        existingPagination.remove();
+    }
+
+    if (totalPages > 1) {
+        const paginationControls = this.createPaginationControls(currentPage, totalPages, 'form1');
+        paginationControls.id = 'form1-pagination';
+        const form1Element = document.getElementById('form1');
+        form1Element.appendChild(paginationControls);
+    }
+};
+
+// إصلاح دالة fillOfficialForm2 لضمان عمل التقسيم إلى صفحات
+RealEstateApp.fillOfficialForm2 = function(property, page = 1) {
+    if (!property) return;
+
+    const itemsPerPage = 20;
+    const allUnits = property.units || [];
+    const totalPages = Math.ceil(allUnits.length / itemsPerPage);
+    const currentPage = Math.max(1, Math.min(page, totalPages));
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const units = allUnits.slice(startIndex, endIndex);
+
+    // تحديث عنوان الاستمارة
+    document.getElementById('form2-header').innerHTML = `
+        <td colspan="35" class="merged-cell">
+        محافظة: ${property.governorate || '--'}
+        مأمورية: ${property.city || '--'}
+        الناحية: ${property.district || '--'}
+        ${totalPages > 1 ? ` - الصفحة ${currentPage} من ${totalPages}` : ''}
+        </td>
+    `;
+
+    // تعبئة البيانات
+    const tbody = document.getElementById('form2-data');
+    tbody.innerHTML = '';
+
+    if (units.length > 0) {
+        units.forEach((unit, index) => {
+            const globalIndex = startIndex + index;
+            const tr = document.createElement('tr');
+            
+            // تعبئة البيانات المشتركة مرة واحدة فقط للوحدة الأولى في الصفحة
+            const commonData = index === 0 ? `
+                <td rowspan="${units.length}">${new Date().toLocaleDateString('ar-EG')}</td>
+                <td rowspan="${units.length}">${property.owner || '--'}</td>
+                <td rowspan="${units.length}">${property.propertyNumber || '--'}</td>
+                <td rowspan="${units.length}">${property.previousPropertyNumber || '--'}</td>
+                <td rowspan="${units.length}">--</td>
+                <td rowspan="${units.length}">${property.street || '--'}</td>
+                <td rowspan="${units.length}">${property.detailedDescription || '--'}</td>
+                <td rowspan="${units.length}">${property.constructionYear || '--'}</td>
+            ` : '';
+            
+            tr.innerHTML = commonData + `
+                <td>${this.getUseTypeName(unit.useType)}</td>
+                <td>--</td>
+                <td>${unit.floor || '--'}</td>
+                <td>${unit.number || globalIndex + 1}</td>
+                <td>${this.getUnitTypeName(unit.unitType)}</td>
+                <td>${unit.area || '--'} م²</td>
+                <td>${unit.occupant || '--'}</td>
+                <td>${unit.rentalValue ? this.formatCurrency(unit.rentalValue) : '--'}</td>
+                <td>${unit.netRentalValue ? this.formatCurrency(unit.netRentalValue) : '--'}</td>
+                <td>${unit.tax ? this.formatCurrency(unit.tax) : '--'}</td>
+                <td>--</td>
+                <td>--</td>
+                <td>--</td>
+                <td>--</td>
+                <td>--</td>
+                <td>--</td>
+                <td>--</td>
+                <td>--</td>
+                <td>--</td>
+                <td>--</td>
+                <td>--</td>
+                <td>--</td>
+                <td>--</td>
+                <td>--</td>
+                <td>--</td>
+                <td>--</td>
+                <td>--</td>
+                <td>--</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        // إضافة صور العقار في خانة الملاحظات (فقط في الصفحة الأولى)
+        if (currentPage === 1 && property.images && property.images.length > 0) {
+            const imagesRow = document.createElement('tr');
+            imagesRow.innerHTML = `
+                <td colspan="35">
+                <div class="form-images-container">
+                    <div class="form-images-title">
+                        <i class="fas fa-images"></i> صور العقار
+                    </div>
+                    <div class="form-images-grid" id="form2-images">
+                        <!-- سيتم ملؤها بالصور -->
+                    </div>
+                </div>
+                </td>
+            `;
+            tbody.appendChild(imagesRow);
+            const imagesContainer = document.getElementById('form2-images');
+            imagesContainer.innerHTML = '';
+            property.images.forEach(img => {
+                const imgContainer = document.createElement('div');
+                imgContainer.className = 'form-image-item';
+                imgContainer.innerHTML = `<img src="${img}" alt="صورة العقار">`;
+                imagesContainer.appendChild(imgContainer);
+            });
+        }
+    } else {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td colspan="35" style="text-align: center; padding: 20px; color: var(--gray);">
+            <i class="fas fa-inbox"></i>
+            <h3>لا توجد وحدات مسجلة لهذا العقار</h3>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    }
+
+    // إضافة عناصر التحكم بالصفحات
+    const existingPagination = document.getElementById('form2-pagination');
+    if (existingPagination) {
+        existingPagination.remove();
+    }
+
+    if (totalPages > 1) {
+        const paginationControls = this.createPaginationControls(currentPage, totalPages, 'form2');
+        paginationControls.id = 'form2-pagination';
+        const form2Element = document.getElementById('form2');
+        form2Element.appendChild(paginationControls);
+    }
+};
+
+// إضافة أنماط CSS للتحكم في الصفحات
+const paginationStyles = `
+.pagination-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 20px 0;
+    gap: 10px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    border: 1px solid #e9ecef;
+}
+
+.pagination-controls .btn {
+    padding: 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.pagination-controls .btn:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+}
+
+.pagination-controls .btn:not(:disabled):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.pagination-info {
+    padding: 8px 15px;
+    background: white;
+    border-radius: 5px;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+@media print {
+    .pagination-controls {
+        display: none !important;
+    }
+    
+    .official-form {
+        page-break-after: always;
+    }
+    
+    .official-form:last-child {
+        page-break-after: auto;
+    }
+}
+`;
+
+// إضافة الأنماط إلى الصفحة إذا لم تكن موجودة
+if (!document.querySelector('#pagination-styles')) {
+    const styleSheet = document.createElement('style');
+    styleSheet.id = 'pagination-styles';
+    styleSheet.textContent = paginationStyles;
+    document.head.appendChild(styleSheet);
+}
+
+// إعادة تهيئة أحداث الاستمارات الرسمية بعد التعديلات
+document.addEventListener('DOMContentLoaded', function() {
+    // تحديث أحداث الطباعة لتعمل مع الصفحات المتعددة
+    const printForm1Btn = document.getElementById('print-form1');
+    const printForm2Btn = document.getElementById('print-form2');
+    
+    if (printForm1Btn) {
+        printForm1Btn.addEventListener('click', function() {
+            RealEstateApp.printForm1();
+        });
+    }
+    
+    if (printForm2Btn) {
+        printForm2Btn.addEventListener('click', function() {
+            RealEstateApp.printForm2();
+        });
+    }
+});
+
+// إصلاح دوال الطباعة لدعم الصفحات المتعددة
+RealEstateApp.printForm1 = function() {
+    const property = RealEstateApp.currentProperty;
+    if (!property || !property.units || property.units.length === 0) {
+        RealEstateApp.showNotification('لا توجد وحدات لطباعتها', 'error');
+        return;
+    }
+
+    const totalPages = Math.ceil(property.units.length / 10);
+    
+    // حفظ حالة التبويبات الحالية
+    const activeTab = document.querySelector('.tab.active');
+    const activeContent = document.querySelector('.tab-content.active');
+    
+    // تفعيل استمارة الحصر
+    document.querySelector('.tab[data-target="form1"]').classList.add('active');
+    document.getElementById('form1').classList.add('active');
+    
+    // طباعة كل صفحة على حدة
+    const printPage = (page) => {
+        RealEstateApp.fillOfficialForm1(property, page);
+        
+        setTimeout(() => {
+            window.print();
+            
+            // الانتقال للصفحة التالية إذا كانت موجودة
+            if (page < totalPages) {
+                printPage(page + 1);
+            } else {
+                // استعادة الحالة السابقة للتبويبات بعد الانتهاء من الطباعة
+                if (activeTab) activeTab.classList.add('active');
+                if (activeContent) activeContent.classList.add('active');
+            }
+        }, 500);
+    };
+    
+    // بدء عملية الطباعة من الصفحة الأولى
+    printPage(1);
+};
+
+RealEstateApp.printForm2 = function() {
+    const property = RealEstateApp.currentProperty;
+    if (!property || !property.units || property.units.length === 0) {
+        RealEstateApp.showNotification('لا توجد وحدات لطباعتها', 'error');
+        return;
+    }
+
+    const totalPages = Math.ceil(property.units.length / 20);
+    
+    // حفظ حالة التبويبات الحالية
+    const activeTab = document.querySelector('.tab.active');
+    const activeContent = document.querySelector('.tab-content.active');
+    
+    // تفعيل استمارة 32
+    document.querySelector('.tab[data-target="form2"]').classList.add('active');
+    document.getElementById('form2').classList.add('active');
+    
+    // طباعة كل صفحة على حدة
+    const printPage = (page) => {
+        RealEstateApp.fillOfficialForm2(property, page);
+        
+        setTimeout(() => {
+            window.print();
+            
+            // الانتقال للصفحة التالية إذا كانت موجودة
+            if (page < totalPages) {
+                printPage(page + 1);
+            } else {
+                // استعادة الحالة السابقة للتبويبات بعد الانتهاء من الطباعة
+                if (activeTab) activeTab.classList.add('active');
+                if (activeContent) activeContent.classList.add('active');
+            }
+        }, 500);
+    };
+    
+    // بدء عملية الطباعة من الصفحة الأولى
+    printPage(1);
+};
+</script>
 </body>
